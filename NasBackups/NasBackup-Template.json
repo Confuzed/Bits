@@ -1,0 +1,137 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "sourceIpAddress": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 15
+        },
+        "storageAccountName": {
+            "type": "string",
+            "defaultValue": "rjfnasbackups"
+        },
+        "storageAccountSkuName": {
+            "type": "string",
+            "defaultValue": "Standard_LRS"
+        },
+        "storageAcccountSkuTier": {
+            "type": "string",
+            "defaultValue": "Standard"
+        },
+        "storageAccessTier": {
+            "type": "string",
+            "defaultValue": "Cool"
+        },
+        "backupContainerName": {
+            "type": "string",
+            "defaultValue": "backups"
+        }
+    },
+    "variables": {
+        "backupContainerFullResourceName": "[concat(parameters('storageAccountName'), '/default/', parameters('backupContainerName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "name": "[parameters('storageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "[parameters('storageAccountSkuName')]",
+                "tier": "[parameters('storageAcccountSkuTier')]"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "largeFileSharesState": "Disabled",
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [
+                        {
+                            "value": "[parameters('sourceIpAddress')]",
+                            "action": "Allow"
+                        }
+                    ],
+                    "defaultAction": "Deny"
+                },
+                "supportsHttpsTrafficOnly": true,
+                "encryption": {
+                    "services": {
+                        "file": {
+                            "keyType": "Account",
+                            "enabled": true
+                        },
+                        "blob": {
+                            "keyType": "Account",
+                            "enabled": true
+                        }
+                    },
+                    "keySource": "Microsoft.Storage"
+                },
+                "accessTier": "[parameters('storageAccessTier')]"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(parameters('storageAccountName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            ],
+            "sku": {
+                "name": "[parameters('storageAccountSkuName')]",
+                "tier": "[parameters('storageAcccountSkuTier')]"
+            },
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                },
+                "deleteRetentionPolicy": {
+                    "enabled": false
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/fileServices",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(parameters('storageAccountName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            ],
+            "sku": {
+                "name": "[parameters('storageAccountSkuName')]",
+                "tier": "[parameters('storageAcccountSkuTier')]"
+            },
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[variables('backupContainerFullResourceName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            ],
+            "properties": {
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/locks",
+            "apiVersion": "2016-09-01",
+            "name": "DeleteProtectionLock",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            ],
+            "properties": {
+                "level": "CanNotDelete",
+                "notes": "Prevent accidental deletion of the backups"
+            }
+        }
+    ]
+}
